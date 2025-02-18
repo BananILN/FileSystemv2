@@ -4,13 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"math"
-	
 	"sync"
 	"time"
-
-	// "math"
-
-	// "io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -79,6 +74,7 @@ func getFilesAndSizes(root string) ([]string, []float64, error) {
 	return files, sizes, err
 }
 
+// Функция для подсчета размера директорий и файлов 
 func getDirSize(path string) float64 {
 	var size float64
 
@@ -106,6 +102,7 @@ func getDirSize(path string) float64 {
 	return size
 }
 
+// Функция для сортировки по размеру (возрастание\убывание)
 func sortFiles(files []string, sizes []float64, order string) {
 	
 	var fileSizes []fileSize
@@ -127,7 +124,7 @@ func sortFiles(files []string, sizes []float64, order string) {
 	}
 }
 
-
+// Функция для вывода файлов и его размеров
 func printFiles(files []string, sizes []float64) error {
 	if len(files) == 0 {
 		fmt.Println("No files or directories found.")
@@ -153,7 +150,7 @@ func printFiles(files []string, sizes []float64) error {
 	
 	return nil
 }
-
+// Функция для форматирований единиц размерности
 func convertSize(size float64) string {
 	floatSize := float64(size)
 	var unit SizeUnit
@@ -178,14 +175,22 @@ func convertSize(size float64) string {
 		unitString = "MB"
 	case GB:
 		unitString = "GB"
+	default:
+		unitString = "Unknown" 
 	}
 	return fmt.Sprintf("%v %s", roundedSize, unitString) 
 }
 
+// Основная функция
 func main() {
 	root := flag.String("root", "", "choose a directory")
 	sortOrder := flag.String("sort", "asc", "choose sorting of directory (asc/desc)")
 	flag.Parse()
+
+	if len(os.Args) < 2 {
+		flag.PrintDefaults()
+		return
+	}
 
 	if *root == "" {
 		fmt.Println("Please warinng a directory using the -root flag.")
