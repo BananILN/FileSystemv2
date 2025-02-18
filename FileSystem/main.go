@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"math"
+	
 	"sync"
 	"time"
 
@@ -63,9 +64,11 @@ func getFilesAndSizes(root string) ([]string, []float64, error) {
 				}
 			}(path, info)
 		}
-
+		
 		return nil
 	})
+	
+
 
 	if err != nil {
 		return nil, nil, err
@@ -99,7 +102,7 @@ func getDirSize(path string) float64 {
 		return 0
 	}
 	
-
+	fmt.Println("path", path, size)
 	return size
 }
 
@@ -147,6 +150,7 @@ func printFiles(files []string, sizes []float64) error {
 			fmt.Printf("[FILE] %s (%s)\n", name, sizeFormatted)
 		}
 	}
+	
 	return nil
 }
 
