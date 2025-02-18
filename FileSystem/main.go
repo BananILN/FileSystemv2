@@ -14,7 +14,22 @@ import (
 	"path/filepath"
 	"sort"
 )
+type fileSize struct {
+	path string
+	size float64
+}
 
+
+type SizeUnit int
+
+const (
+	B SizeUnit = iota // 0
+	KB                 // 1
+	MB                 // 2
+	GB                 // 3
+)
+
+// Функция для получения файлов и его размеров
 func getFilesAndSizes(root string) ([]string, []float64, error) {
 	var files []string
 	var sizes []float64
@@ -29,16 +44,12 @@ func getFilesAndSizes(root string) ([]string, []float64, error) {
 			return err
 		}
 
-		// Пропускаем корневую директорию
-		if path == root {
-			return nil
-		}
+	
 
-		// Проверяем, является ли файл или директория на первом уровне
 		if filepath.Dir(path) == root {
 			wg.Add(1)
 			go func(path string, info os.FileInfo) {
-				defer wg.Done() // Уменьшаем счетчик при завершении горутины
+				defer wg.Done() 
 				mu.Lock()       // Блокируем мьютекс для безопасного доступа к общим данным
 				defer mu.Unlock()
 
@@ -60,7 +71,7 @@ func getFilesAndSizes(root string) ([]string, []float64, error) {
 		return nil, nil, err
 	}
 
-	wg.Wait() // Ожидаем завершения всех горутин
+	wg.Wait() 
 
 	return files, sizes, err
 }
@@ -87,16 +98,13 @@ func getDirSize(path string) float64 {
 		fmt.Println("ошибка при вычислении размера директории:", err)
 		return 0
 	}
-	fmt.Println("path", path, size)
+	
 
 	return size
 }
 
 func sortFiles(files []string, sizes []float64, order string) {
-	type fileSize struct {
-		path string
-		size float64
-	}
+	
 	var fileSizes []fileSize
 	for i := range files {
 		fileSizes = append(fileSizes, fileSize{files[i], sizes[i]})
@@ -144,29 +152,30 @@ func printFiles(files []string, sizes []float64) error {
 
 func convertSize(size float64) string {
 	floatSize := float64(size)
-	counter := 0
-	var value string
+	var unit SizeUnit
 
 	for {
 		if floatSize >= 1000 {
 			floatSize = floatSize / 1000
-			counter += 1
+			unit++
 		} else {
 			break
 		}
 	}
 	roundedSize := math.Round(floatSize*10) / 10
-	switch counter {
-	case 0:
-		value = "B"
-	case 1:
-		value = "KB"
-	case 2:
-		value = "MB"
-	case 3:
-		value = "GB"
+	var unitString string
+
+	switch unit {
+	case B:
+		unitString = "B"
+	case KB:
+		unitString = "KB"
+	case MB:
+		unitString = "MB"
+	case GB:
+		unitString = "GB"
 	}
-	return fmt.Sprintf("%v %s", roundedSize, value) 
+	return fmt.Sprintf("%v %s", roundedSize, unitString) 
 }
 
 func main() {
@@ -177,6 +186,9 @@ func main() {
 	if *root == "" {
 		fmt.Println("Please warinng a directory using the -root flag.")
 		return
+	}
+	if *root != *sortOrder{
+		fmt.Println("You can use -sort flag to choose sorting of directory (asc/desc), default sort = asc")
 	}
 
 	if _, err := os.Stat(*root); os.IsNotExist(err) {
