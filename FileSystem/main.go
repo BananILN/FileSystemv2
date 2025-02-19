@@ -24,9 +24,9 @@ type Config struct {
 }
 
 type FileInfo struct {
-	Path  string `json:"path"`
-	Size  string `json:"size"` // Изменено на строку
-	IsDir bool   `json:"is_dir"`
+	Path  string 
+	Size  string  
+	IsDir bool   
 }
 
 type SizeUnit int
@@ -49,19 +49,19 @@ func getFilesAndSizes(root string) ([]FileInfo, error) {
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			log.Printf("Error accessing path %s: %v", path, err)
-			return nil // Продолжаем обход, даже если возникла ошибка
+			return nil 
 		}
 
 		if filepath.Dir(path) == root {
 			wg.Add(1)
 			go func(path string, info os.FileInfo) {
 				defer wg.Done()
-				mu.Lock() // Блокируем мьютекс для безопасного доступа к общим данным
+				mu.Lock() 
 				defer mu.Unlock()
 
 				var size float64
 				if info.IsDir() {
-					// Получаем размер директории, включая все вложенные файлы и поддиректории
+			
 					size = getDirSize(path)
 				} else {
 					size = float64(info.Size())
@@ -69,7 +69,7 @@ func getFilesAndSizes(root string) ([]FileInfo, error) {
 
 				fileInfos = append(fileInfos, FileInfo{
 					Path:  path,
-					Size:  convertSize(size), // Используем convertSize для форматирования размера
+					Size:  convertSize(size), 
 					IsDir: info.IsDir(),
 				})
 			}(path, info)
@@ -91,14 +91,14 @@ func getFilesAndSizes(root string) ([]FileInfo, error) {
 func getDirSize(path string) float64 {
 	var size float64
 
-	// Рекурсивно обходим все файлы и поддиректории.
+	
 	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
 		if err != nil {
 			log.Printf("Error accessing path %s: %v", path, err)
-			return nil // Продолжаем обход, даже если возникла ошибка
+			return nil 
 		}
 		if info.IsDir() {
-			// Для файлов добавляем их размер.
+			
 			if info.Name() != filepath.Base(path) {
 				size += float64(info.Size())
 			}
@@ -204,7 +204,7 @@ func main() {
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
-	// Создаем контекст с отменой
+	
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -228,7 +228,7 @@ func main() {
 		Handler: http.HandlerFunc(jsonHandler(*root, *sortOrder)),
 	}
 
-	// Запускаем сервер в отдельной горутине
+	
 	go func() {
 		fmt.Printf("Сервер запущен на http://%s\n", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -236,14 +236,14 @@ func main() {
 		}
 	}()
 
-	// Ожидаем сигнала завершения
+	
 	<-signalChan
 	fmt.Println("Получен сигнал завершения, начинаем завершение работы...")
 
-	// Отмена контекста
+	
 	cancel()
 
-	// Завершение работы сервера
+	
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatalf("Ошибка при завершении работы сервера: %v", err)
 	}
