@@ -1,20 +1,33 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"log"
 	"math"
-	"sync"
-	"time"
+	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
+	"sync"
+	"syscall"
+
+	"github.com/joho/godotenv"
 )
-type fileSize struct {
-	path string
-	size float64
+
+type Config struct {
+	Host string
+	Port string
 }
 
+type FileInfo struct {
+	Path  string `json:"path"`
+	Size  string `json:"size"` // Изменено на строку
+	IsDir bool   `json:"is_dir"`
+}
 
 type SizeUnit int
 
@@ -26,52 +39,52 @@ const (
 )
 
 // Функция для получения файлов и его размеров
-func getFilesAndSizes(root string) ([]string, []float64, error) {
-	var files []string
-	var sizes []float64
+func getFilesAndSizes(root string) ([]FileInfo, error) {
+	var fileInfos []FileInfo
 	var mu sync.Mutex
 	var wg sync.WaitGroup
-
 
 	fmt.Printf("Scanning directory: %s\n", root)
 
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return err
+			log.Printf("Error accessing path %s: %v", path, err)
+			return nil // Продолжаем обход, даже если возникла ошибка
 		}
-
-	
 
 		if filepath.Dir(path) == root {
 			wg.Add(1)
 			go func(path string, info os.FileInfo) {
-				defer wg.Done() 
-				mu.Lock()       // Блокируем мьютекс для безопасного доступа к общим данным
+				defer wg.Done()
+				mu.Lock() // Блокируем мьютекс для безопасного доступа к общим данным
 				defer mu.Unlock()
 
-				files = append(files, path)
+				var size float64
 				if info.IsDir() {
 					// Получаем размер директории, включая все вложенные файлы и поддиректории
-					size := getDirSize(path)
-					sizes = append(sizes, float64(size))
+					size = getDirSize(path)
 				} else {
-					sizes = append(sizes, float64(info.Size()))
+					size = float64(info.Size())
 				}
+
+				fileInfos = append(fileInfos, FileInfo{
+					Path:  path,
+					Size:  convertSize(size), // Используем convertSize для форматирования размера
+					IsDir: info.IsDir(),
+				})
 			}(path, info)
 		}
-		
+
 		return nil
 	})
-	
-
 
 	if err != nil {
-		return nil, nil, err
+		return nil, fmt.Errorf("error walking the directory: %v", err)
 	}
 
-	wg.Wait() 
+	wg.Wait()
 
-	return files, sizes, err
+	return fileInfos, nil
 }
 
 // Функция для подсчета размера директорий и файлов 
@@ -81,76 +94,39 @@ func getDirSize(path string) float64 {
 	// Рекурсивно обходим все файлы и поддиректории.
 	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
 		if err != nil {
-			return err
+			log.Printf("Error accessing path %s: %v", path, err)
+			return nil // Продолжаем обход, даже если возникла ошибка
 		}
 		if info.IsDir() {
 			// Для файлов добавляем их размер.
-			if info.Name() != filepath.Base(path){
+			if info.Name() != filepath.Base(path) {
 				size += float64(info.Size())
 			}
-		} else{
+		} else {
 			size += float64(info.Size())
 		}
 		return nil
 	})
 	if err != nil {
-		fmt.Println("ошибка при вычислении размера директории:", err)
+		log.Printf("ошибка при вычислении размера директории %s: %v", path, err)
 		return 0
 	}
-	
-	fmt.Println("path", path, size)
+
 	return size
 }
 
 // Функция для сортировки по размеру (возрастание\убывание)
-func sortFiles(files []string, sizes []float64, order string) {
-	
-	var fileSizes []fileSize
-	for i := range files {
-		fileSizes = append(fileSizes, fileSize{files[i], sizes[i]})
-	}
-
-	sort.Slice(fileSizes, func(i, j int) bool {
+func sortFiles(fileInfos []FileInfo, order string) {
+	sort.Slice(fileInfos, func(i, j int) bool {
 		if order == "asc" {
-			return fileSizes[i].size < fileSizes[j].size
+			return fileInfos[i].Size < fileInfos[j].Size
 		} else {
-			return fileSizes[i].size > fileSizes[j].size
+			return fileInfos[i].Size > fileInfos[j].Size
 		}
 	})
-
-	for i := 0; i < len(fileSizes); i++ {
-		files[i] = fileSizes[i].path
-		sizes[i] = fileSizes[i].size
-	}
 }
 
-// Функция для вывода файлов и его размеров
-func printFiles(files []string, sizes []float64) error {
-	if len(files) == 0 {
-		fmt.Println("No files or directories found.")
-		return nil
-	}
-
-	for i, file := range files {
-		info, err := os.Stat(file)
-		if err != nil {
-			fmt.Printf("Error getting info for %s: %s\n", file, err)
-			return err
-		}
-
-		name := filepath.Base(file)
-		sizeFormatted := convertSize(sizes[i])
-
-		if info.IsDir() {
-			fmt.Printf("[DIR]  %s (%s)\n", name, sizeFormatted)
-		} else {
-			fmt.Printf("[FILE] %s (%s)\n", name, sizeFormatted)
-		}
-	}
-	
-	return nil
-}
-// Функция для форматирований единиц размерности
+// Функция для форматирования единиц размерности
 func convertSize(size float64) string {
 	floatSize := float64(size)
 	var unit SizeUnit
@@ -176,46 +152,101 @@ func convertSize(size float64) string {
 	case GB:
 		unitString = "GB"
 	default:
-		unitString = "Unknown" 
+		unitString = "Unknown"
 	}
-	return fmt.Sprintf("%v %s", roundedSize, unitString) 
+	return fmt.Sprintf("%v %s", roundedSize, unitString)
+}
+
+// Обработчик для вывода JSON
+func jsonHandler(root string, order string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		fileInfos, err := getFilesAndSizes(root)
+		if err != nil {
+			http.Error(w, "Ошибка при получении файлов: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		sortFiles(fileInfos, order)
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(fileInfos); err != nil {
+			http.Error(w, "Ошибка при выводе JSON: "+err.Error(), http.StatusInternalServerError)
+		}
+	}
+}
+
+func LoadConfig() (*Config, error) {
+	err := godotenv.Load()
+	if err != nil {
+		return nil, fmt.Errorf("ошибка загрузки .env файла: %v", err)
+	}
+
+	host := os.Getenv("HOST")
+	port := os.Getenv("PORT")
+
+	if host == "" || port == "" {
+		return nil, fmt.Errorf("HOST или PORT не заданы в .env файле")
+	}
+
+	return &Config{
+		Host: host,
+		Port: port,
+	}, nil
 }
 
 // Основная функция
 func main() {
-	root := flag.String("root", "", "choose a directory")
+	config, err := LoadConfig()
+	if err != nil {
+		log.Fatalf("Ошибка загрузки конфигурации: %v", err)
+	}
+
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// Создаем контекст с отменой
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	root := flag.String("root", "/home/danil", "choose a directory")
 	sortOrder := flag.String("sort", "asc", "choose sorting of directory (asc/desc)")
 	flag.Parse()
 
-	if len(os.Args) < 2 {
-		flag.PrintDefaults()
-		return
-	}
-
 	if *root == "" {
-		fmt.Println("Please warinng a directory using the -root flag.")
+		fmt.Println("Please specify a directory using the -root flag.")
 		return
-	}
-	if *root != *sortOrder{
-		fmt.Println("You can use -sort flag to choose sorting of directory (asc/desc), default sort = asc")
 	}
 
 	if _, err := os.Stat(*root); os.IsNotExist(err) {
 		fmt.Println("Directory does not exist.")
 		return
 	}
-	startTime := time.Now()
 
-	files, sizes, err := getFilesAndSizes(*root)
-	if err != nil {
-		fmt.Printf("Error walking the directory: %s\n", err)
-		return
+	// Создаем HTTP сервер
+	srv := &http.Server{
+		Addr: fmt.Sprintf("%s:%s", config.Host, config.Port),
+		Handler: http.HandlerFunc(jsonHandler(*root, *sortOrder)),
 	}
 
-	sortFiles(files, sizes, *sortOrder)
+	// Запускаем сервер в отдельной горутине
+	go func() {
+		fmt.Printf("Сервер запущен на http://%s\n", srv.Addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Ошибка при запуске сервера: %v", err)
+		}
+	}()
 
-	printFiles(files, sizes)
+	// Ожидаем сигнала завершения
+	<-signalChan
+	fmt.Println("Получен сигнал завершения, начинаем завершение работы...")
 
-	TimeEnd := time.Since(startTime)
-	fmt.Printf("time end: %s\n", TimeEnd)
+	// Отмена контекста
+	cancel()
+
+	// Завершение работы сервера
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatalf("Ошибка при завершении работы сервера: %v", err)
+	}
+
+	fmt.Println("Сервер завершил работу.")
 }
