@@ -24,9 +24,9 @@ type Config struct {
 }
 
 type FileInfo struct {
-	Path  string 
-	Size  string  
-	IsDir bool   
+	Path  string `json:"path"`
+	Size  string `json:"size"` 
+	IsDir bool  `json:"is_dir"`
 }
 
 type SizeUnit int
@@ -74,7 +74,6 @@ func getFilesAndSizes(root string) ([]FileInfo, error) {
 				})
 			}(path, info)
 		}
-
 		return nil
 	})
 
@@ -160,7 +159,21 @@ func convertSize(size float64) string {
 // Обработчик для вывода JSON
 func jsonHandler(root string, order string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		fileInfos, err := getFilesAndSizes(root)
+		// Получаем путь из URL
+		path := r.URL.Query().Get("path")
+		if path == "" {
+			path = root // По умолчанию корневая директория
+		}
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+            http.Error(w, "Directory does not exist", http.StatusNotFound)
+            return
+        }
+		order := r.URL.Query().Get("sort")
+        if order == "" {
+            order = "desc" // По умолчанию сортировка по убыванию
+        }
+
+		fileInfos, err := getFilesAndSizes(path)
 		if err != nil {
 			http.Error(w, "Ошибка при получении файлов: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -209,7 +222,7 @@ func main() {
 	defer cancel()
 
 	root := flag.String("root", "/home/danil", "choose a directory")
-	sortOrder := flag.String("sort", "asc", "choose sorting of directory (asc/desc)")
+	sortOrder := flag.String("sort", "desc", "choose sorting of directory (asc/desc)")
 	flag.Parse()
 
 	if *root == "" {
@@ -221,11 +234,21 @@ func main() {
 		fmt.Println("Directory does not exist.")
 		return
 	}
+	
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+
+	// Обработчик для JSON
+	http.Handle("/api/files", jsonHandler(*root, *sortOrder))
+
+	// Обработчик для HTML
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "static/index.html")
+	})
 
 	// Создаем HTTP сервер
 	srv := &http.Server{
 		Addr: fmt.Sprintf("%s:%s", config.Host, config.Port),
-		Handler: http.HandlerFunc(jsonHandler(*root, *sortOrder)),
+		
 	}
 
 	
