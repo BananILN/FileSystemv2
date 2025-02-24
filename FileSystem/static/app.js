@@ -5,10 +5,10 @@ document.addEventListener("DOMContentLoaded", function () {
             .then((response) => response.json())
             .then((data) => {
                 const fileList = document.getElementById("file-list");
-                fileList.innerHTML = ""; // Очищаем текущий список
+                fileList.innerHTML = ""; 
 
                 data.forEach(el => {
-                    // Создаем элементы для каждой строки таблицы
+             
                     const pathDiv = document.createElement("div");
                     pathDiv.className = "grid-item";
                     pathDiv.textContent = el.path;
@@ -21,15 +21,15 @@ document.addEventListener("DOMContentLoaded", function () {
                     typeDiv.className = "grid-item";
                     typeDiv.textContent = el.is_dir ? "Директория" : "Файл";
 
-                    // Если это директория, добавляем обработчик клика
+                   
                     if (el.is_dir) {
                         pathDiv.style.cursor = "pointer";
                         pathDiv.addEventListener("click", () => {
-                            // Обновляем URL и загружаем данные для новой директории
+                        
                             const newPath = el.path;
                             history.pushState({ path: newPath }, "", `?path=${encodeURIComponent(newPath)}`);
-                            currentPath = newPath; // Обновляем currentPath
-                            loadFiles(newPath); // Загружаем файлы для новой директории
+                            currentPath = newPath; 
+                            loadFiles(newPath); 
                         });
                     }
                     fileList.appendChild(pathDiv);
@@ -39,16 +39,17 @@ document.addEventListener("DOMContentLoaded", function () {
             })
             .catch((error) => console.error("Error fetching files:", error));
     }
+   
 
-    // Обработчик изменения URL (например, при нажатии кнопки "Назад" в браузере)
+    
     window.addEventListener("popstate", (event) => {
-        const path = event.state?.path || "/home/danil"; // Путь по умолчанию
-        loadFiles(path); // Загружаем файлы для текущего пути
+        const path = event.state?.path || "/home/danil"; 
+        loadFiles(path); 
     });
 
     // Загружаем данные для текущего пути
     const urlParams = new URLSearchParams(window.location.search);
-    let currentPath = urlParams.get("path") || "/home/danil"; // Изменено на let
+    let currentPath = urlParams.get("path") || "/home/danil"; 
     loadFiles(currentPath);
 
     const sortAsc = document.querySelector('.sort-asc');
@@ -56,13 +57,33 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Обработчик клика для сортировки по возрастанию
     sortAsc.addEventListener('click', () => {
-        loadFiles(currentPath, "asc"); // Передаем текущий путь и сортировку
+        loadFiles(currentPath, "asc"); 
         history.pushState({ path: currentPath }, "", `?path=${encodeURIComponent(currentPath)}&sort=asc`);
     });
     
     // Обработчик клика для сортировки по убыванию
     sortDesc.addEventListener('click', () => {
-        loadFiles(currentPath, "desc"); // Передаем текущий путь и сортировку
+        loadFiles(currentPath, "desc"); 
         history.pushState({ path: currentPath }, "", `?path=${encodeURIComponent(currentPath)}&sort=desc`);
     });
+    
+    const backButton = document.querySelector('.button-back');
+    backButton.addEventListener('click', () => {
+        const currentPath = new URLSearchParams(window.location.search).get("path") || "/home/danil";
+        const parentPath = getParentPath(currentPath); 
+    
+        if (parentPath !== currentPath) { 
+            history.pushState({ path: parentPath }, "", `?path=${encodeURIComponent(parentPath)}`);
+            loadFiles(parentPath);
+        }
+    });
+
+    function getParentPath(path) {
+        const segments = path.split('/').filter(segment => segment.length > 0);
+        if (segments.length <= 1) {
+            return "/"; 
+        }
+        segments.pop(); 
+        return '/' + segments.join('/');
+    }
 });
